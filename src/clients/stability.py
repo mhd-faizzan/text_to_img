@@ -9,9 +9,9 @@ import httpx
 from src.config import CLIENT_ID, SESSION_ID, STABILITY_API_KEY
 
 
-# Stability API endpoints (generic; model passed via form)
-TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
-IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
+# Stability API endpoints (model specified in form data)
+TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate"
+IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit"
 
 
 SUPPORTED_MODELS = {
