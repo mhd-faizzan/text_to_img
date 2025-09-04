@@ -1,0 +1,13 @@
+streamlit
+requests
+pillow
+python-dotenv
+pydantic
+httpx
+typing-extensions
+
+# Optional local fallback (uncomment to enable local engine)
+# diffusers
+# transformers
+# accelerate
+# safetensors
