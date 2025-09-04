@@ -9,9 +9,9 @@ import httpx
 from src.config import CLIENT_ID, SESSION_ID, STABILITY_API_KEY
 
 
-# Stability API endpoints for SD3.5
-TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3.5"
-IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3.5"
+# Stability API endpoints (generic; model passed via form)
+TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
+IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
 
 
 SUPPORTED_MODELS = {
@@ -61,6 +61,7 @@ class StabilityClient:
 			"prompt": (None, prompt),
 			"aspect_ratio": (None, aspect_ratio),
 			"output_format": (None, output_format),
+			"model": (None, engine),
 		}
 		if seed is not None:
 			form["seed"] = (None, str(seed))
@@ -70,8 +71,6 @@ class StabilityClient:
 			form["cfg_scale"] = (None, str(cfg_scale))
 		if negative_prompt:
 			form["negative_prompt"] = (None, negative_prompt)
-		# Include model alias string
-		form["model"] = (None, engine)
 
 		resp = self.client.post(TEXT_TO_IMAGE_URL, headers=self._headers(), files=form)
 		return self._process_image_response(resp)
@@ -113,7 +112,6 @@ class StabilityClient:
 	def _compose_error_message(self, resp: httpx.Response) -> str:
 		try:
 			data = resp.json()
-			# Common Stability error formats often include fields like 'message' or 'error'
 			msg = data.get("message") or data.get("error") or data
 			return f"{resp.status_code} {msg}"
 		except Exception:
