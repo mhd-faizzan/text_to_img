@@ -9,9 +9,9 @@ import httpx
 from src.config import CLIENT_ID, SESSION_ID, STABILITY_API_KEY
 
 
-# Provider sample-compatible endpoints
-TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
-IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
+# Endpoints
+TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/text-to-image"
+IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"  # unchanged for i2i
 
 
 SUPPORTED_MODELS = {
@@ -37,13 +37,16 @@ class StabilityClient:
 			raise RuntimeError("Missing STABILITY_API_KEY for Stability API client")
 		self.client = httpx.Client(timeout=timeout_seconds)
 
-	def _headers(self) -> Dict[str, str]:
-		return {
+	def _headers(self, content_type_json: bool = False) -> Dict[str, str]:
+		headers = {
 			"Authorization": f"Bearer {self.api_key}",
 			"Accept": "image/*",
 			"X-Client-Id": CLIENT_ID,
 			**({"X-Session-Id": SESSION_ID} if SESSION_ID else {}),
 		}
+		if content_type_json:
+			headers["Content-Type"] = "application/json"
+		return headers
 
 	def generate_text_to_image(
 		self,
@@ -54,28 +57,25 @@ class StabilityClient:
 		style_preset: Optional[str] = None,
 		cfg_scale: Optional[float] = None,
 		negative_prompt: Optional[str] = None,
-		output_format: str = "jpeg",
+		output_format: str = "png",
 	) -> GenerationResult:
-		# Match provider sample by sending form fields via 'data' and include a dummy file part
-		data: Dict[str, str] = {
+		engine = SUPPORTED_MODELS.get(model, model)
+		payload: Dict[str, object] = {
+			"model": engine,
 			"prompt": prompt,
 			"output_format": output_format,
+			"aspect_ratio": aspect_ratio,
 		}
-		# Optional fields if provided (not in sample, but commonly accepted)
-		if aspect_ratio:
-			data["aspect_ratio"] = aspect_ratio
 		if seed is not None:
-			data["seed"] = str(seed)
+			payload["seed"] = seed
 		if style_preset:
-			data["style_preset"] = style_preset
+			payload["style_preset"] = style_preset
 		if cfg_scale is not None:
-			data["cfg_scale"] = str(cfg_scale)
+			payload["cfg_scale"] = cfg_scale
 		if negative_prompt:
-			data["negative_prompt"] = negative_prompt
-		# NOTE: model is intentionally not sent to mirror the sample; sd3 route resolves model server-side
+			payload["negative_prompt"] = negative_prompt
 
-		files = {"none": ""}
-		resp = self.client.post(TEXT_TO_IMAGE_URL, headers=self._headers(), data=data, files=files)
+		resp = self.client.post(TEXT_TO_IMAGE_URL, headers=self._headers(content_type_json=True), json=payload)
 		return self._process_image_response(resp)
 
 	def generate_image_to_image(
@@ -91,6 +91,7 @@ class StabilityClient:
 		negative_prompt: Optional[str] = None,
 		output_format: str = "jpeg",
 	) -> GenerationResult:
+		# Keep i2i using edit/sd3 until a text-to-image equivalent for i2i is requested
 		data: Dict[str, str] = {
 			"prompt": prompt,
 			"output_format": output_format,
@@ -128,7 +129,7 @@ class StabilityClient:
 	def _process_image_response(self, resp: httpx.Response) -> GenerationResult:
 		if resp.status_code >= 400:
 			raise RuntimeError(f"Stability API error: {self._compose_error_message(resp)}")
-		content_type = resp.headers.get("Content-Type", "image/jpeg")
+		content_type = resp.headers.get("Content-Type", "image/png")
 		seed_header = resp.headers.get("X-Seed") or resp.headers.get("Seed")
 		seed_value: Optional[int] = int(seed_header) if seed_header and seed_header.isdigit() else None
 		return GenerationResult(
