@@ -9,8 +9,19 @@ import httpx
 from src.config import CLIENT_ID, SESSION_ID, STABILITY_API_KEY
 
 
+<<<<<<< HEAD
 TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
 IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
+=======
+# Primary endpoints per provider sample
+TEXT_TO_IMAGE_SD3_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
+IMAGE_TO_IMAGE_SD3_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
+
+# Fallback endpoints (model specified in payload)
+TEXT_TO_IMAGE_BASE_URL = "https://api.stability.ai/v2beta/text-to-image"
+TEXT_TO_IMAGE_GENERATE_URL = "https://api.stability.ai/v2beta/stable-image/generate"
+IMAGE_TO_IMAGE_BASE_URL = "https://api.stability.ai/v2beta/stable-image/edit"
+>>>>>>> 5e2ae1df435ab1c7edc3d3817d515e84c012e8c4
 
 
 @dataclass
@@ -28,11 +39,16 @@ class StabilityClient:
 			raise RuntimeError("Missing STABILITY_API_KEY for Stability API client")
 		self.client = httpx.Client(timeout=timeout_seconds)
 
+<<<<<<< HEAD
 	def _headers(self) -> Dict[str, str]:
+=======
+	def _headers(self, content_type_json: bool = False) -> Dict[str, str]:
+>>>>>>> 5e2ae1df435ab1c7edc3d3817d515e84c012e8c4
 		headers = {
 			"Authorization": f"Bearer {self.api_key}",
 			"Accept": "image/*",
 		}
+<<<<<<< HEAD
 		if CLIENT_ID:
 			headers["X-Client-Id"] = CLIENT_ID
 		if SESSION_ID:
@@ -107,6 +123,11 @@ class StabilityClient:
 		}
 		resp = self.client.post(IMAGE_TO_IMAGE_URL, headers=self._headers(), data=data, files=files)
 		return self._process_image_response(resp)
+=======
+		if content_type_json:
+			headers["Content-Type"] = "application/json"
+		return headers
+>>>>>>> 5e2ae1df435ab1c7edc3d3817d515e84c012e8c4
 
 	def _compose_error_message(self, resp: httpx.Response) -> str:
 		try:
@@ -122,7 +143,7 @@ class StabilityClient:
 	def _process_image_response(self, resp: httpx.Response) -> GenerationResult:
 		if resp.status_code >= 400:
 			raise RuntimeError(f"Stability API error: {self._compose_error_message(resp)}")
-		content_type = resp.headers.get("Content-Type", "image/jpeg")
+		content_type = resp.headers.get("Content-Type", "image/png")
 		seed_header = resp.headers.get("X-Seed") or resp.headers.get("Seed")
 		seed_value: Optional[int] = int(seed_header) if seed_header and seed_header.isdigit() else None
 		return GenerationResult(
@@ -130,4 +151,158 @@ class StabilityClient:
 			content_type=content_type,
 			seed=seed_value,
 			response_headers=dict(resp.headers),
+		)
+
+	def generate_text_to_image(
+		self,
+		prompt: str,
+		model: str,
+		aspect_ratio: str = "1:1",
+		seed: Optional[int] = None,
+		style_preset: Optional[str] = None,
+		cfg_scale: Optional[float] = None,
+		negative_prompt: Optional[str] = None,
+		output_format: str = "jpeg",
+	) -> GenerationResult:
+		# Attempt 1: provider sd3 route (multipart with dummy file, minimal fields)
+		data_sd3 = {
+			"prompt": prompt,
+			"output_format": output_format,
+		}
+		resp = self.client.post(
+			TEXT_TO_IMAGE_SD3_URL,
+			headers=self._headers(),
+			data=data_sd3,
+			files={"none": ""},
+		)
+		if resp.status_code < 400:
+			return self._process_image_response(resp)
+
+		# Attempt 2: base text-to-image JSON with model field
+		engine = SUPPORTED_MODELS.get(model, model)
+		payload_json: Dict[str, object] = {
+			"model": engine,
+			"prompt": prompt,
+			"output_format": output_format,
+			"aspect_ratio": aspect_ratio,
+		}
+		if seed is not None:
+			payload_json["seed"] = seed
+		if style_preset:
+			payload_json["style_preset"] = style_preset
+		if cfg_scale is not None:
+			payload_json["cfg_scale"] = cfg_scale
+		if negative_prompt:
+			payload_json["negative_prompt"] = negative_prompt
+
+		resp2 = self.client.post(
+			TEXT_TO_IMAGE_BASE_URL,
+			headers=self._headers(content_type_json=True),
+			json=payload_json,
+		)
+		if resp2.status_code < 400:
+			return self._process_image_response(resp2)
+
+		# Attempt 3: stable-image/generate with multipart form including model
+		form = {
+			"prompt": (None, prompt),
+			"output_format": (None, output_format),
+			"aspect_ratio": (None, aspect_ratio),
+			"model": (None, engine),
+		}
+		if seed is not None:
+			form["seed"] = (None, str(seed))
+		if style_preset:
+			form["style_preset"] = (None, style_preset)
+		if cfg_scale is not None:
+			form["cfg_scale"] = (None, str(cfg_scale))
+		if negative_prompt:
+			form["negative_prompt"] = (None, negative_prompt)
+
+		resp3 = self.client.post(
+			TEXT_TO_IMAGE_GENERATE_URL,
+			headers=self._headers(),
+			files=form,
+		)
+		if resp3.status_code < 400:
+			return self._process_image_response(resp3)
+
+		# All attempts failed
+		raise RuntimeError(
+			"; then ".join(
+				[
+					f"sd3 route failed: {self._compose_error_message(resp)}",
+					f"text-to-image JSON failed: {self._compose_error_message(resp2)}",
+					f"stable-image/generate failed: {self._compose_error_message(resp3)}",
+				]
+			)
+		)
+
+	def generate_image_to_image(
+		self,
+		init_image_bytes: bytes,
+		prompt: str,
+		model: str,
+		strength: float = 0.6,
+		aspect_ratio: str = "1:1",
+		seed: Optional[int] = None,
+		style_preset: Optional[str] = None,
+		cfg_scale: Optional[float] = None,
+		negative_prompt: Optional[str] = None,
+		output_format: str = "jpeg",
+	) -> GenerationResult:
+		# Attempt 1: provider sd3 edit route (multipart with real image + dummy)
+		data_sd3 = {
+			"prompt": prompt,
+			"output_format": output_format,
+			"strength": str(strength),
+		}
+		files_sd3: Dict[str, Tuple[str, io.BytesIO, str] | str] = {
+			"image": ("image.png", io.BytesIO(init_image_bytes), "image/png"),
+			"none": "",
+		}
+		resp = self.client.post(
+			IMAGE_TO_IMAGE_SD3_URL,
+			headers=self._headers(),
+			data=data_sd3,
+			files=files_sd3,
+		)
+		if resp.status_code < 400:
+			return self._process_image_response(resp)
+
+		# Attempt 2: base edit endpoint with multipart (include model)
+		engine = SUPPORTED_MODELS.get(model, model)
+		form: Dict[str, Tuple[Optional[str], object]] = {
+			"prompt": (None, prompt),
+			"image": ("image.png", io.BytesIO(init_image_bytes), "image/png"),
+			"strength": (None, str(strength)),
+			"aspect_ratio": (None, aspect_ratio),
+			"output_format": (None, output_format),
+			"model": (None, engine),
+		}
+		if seed is not None:
+			form["seed"] = (None, str(seed))
+		if style_preset:
+			form["style_preset"] = (None, style_preset)
+		if cfg_scale is not None:
+			form["cfg_scale"] = (None, str(cfg_scale))
+		if negative_prompt:
+			form["negative_prompt"] = (None, negative_prompt)
+
+		resp2 = self.client.post(
+			IMAGE_TO_IMAGE_BASE_URL,
+			headers=self._headers(),
+			files=form,
+		)
+		if resp2.status_code < 400:
+			return self._process_image_response(resp2)
+
+		# All attempts failed
+		raise RuntimeError(
+			"; then ".join(
+				[
+					f"sd3 edit route failed: {self._compose_error_message(resp)}",
+					f"stable-image/edit failed: {self._compose_error_message(resp2)}",
+				]
+			)
 		)
