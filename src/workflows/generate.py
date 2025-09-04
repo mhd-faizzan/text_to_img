@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from src.clients.stability import StabilityClient, GenerationResult
 
@@ -17,20 +17,20 @@ DEFAULT_CFG_BY_MODEL = {
 
 
 class GenerateParams(BaseModel):
-	mode: str = Field(regex="^(t2i|i2i)$")
+	mode: str = Field(pattern="^(t2i|i2i)$")
 	prompt: str
-	model: str = Field(regex="^(large|turbo|medium|flash)$")
+	model: str = Field(pattern="^(large|turbo|medium|flash)$")
 	aspect_ratio: str = Field(default="1:1")
 	seed: Optional[int] = None
 	style_preset: Optional[str] = None
 	cfg_scale: Optional[float] = None
 	negative_prompt: Optional[str] = None
-	output_format: str = Field(default="png", regex="^(png|jpeg|webp)$")
+	output_format: str = Field(default="png", pattern="^(png|jpeg|webp)$")
 	# i2i only
 	strength: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 	init_image_bytes: Optional[bytes] = None
 
-	@validator("cfg_scale", always=True, pre=True)
+	@field_validator("cfg_scale", mode="before")
 	def _default_cfg(cls, v, values):  # type: ignore[override]
 		if v is not None:
 			return v
