@@ -166,28 +166,28 @@ if generate:
 
 	with st.spinner("Generating…"):
 		api_client, local = get_clients()
-		if controls["engine"] == "local":
-			if local is None:
-				st.error("Local engine not available. Ensure GPU and diffusers installed.")
-				st.stop()
-			image = run_local_inference(local, controls)
-			buf = io.BytesIO()
-			image.save(buf, format="PNG")
-			img_bytes = buf.getvalue()
-			result_bytes = img_bytes
-			content_type = "image/png"
-			seed_used = controls.get("seed")
-		else:
-			workflow = Workflow(client=api_client)
-			params = GenerateParams(**{k: v for k, v in controls.items() if k != "engine"})
-			result = workflow.run(params)
-			result_bytes = result.image_bytes
-			content_type = result.content_type
-			seed_used = result.seed
-
-		st.session_state.last_request_ts = time.time()
-
 		try:
+			if controls["engine"] == "local":
+				if local is None:
+					st.error("Local engine not available. Ensure GPU and diffusers installed.")
+					st.stop()
+				image = run_local_inference(local, controls)
+				buf = io.BytesIO()
+				image.save(buf, format="PNG")
+				img_bytes = buf.getvalue()
+				result_bytes = img_bytes
+				content_type = "image/png"
+				seed_used = controls.get("seed")
+			else:
+				workflow = Workflow(client=api_client)
+				params = GenerateParams(**{k: v for k, v in controls.items() if k != "engine"})
+				result = workflow.run(params)
+				result_bytes = result.image_bytes
+				content_type = result.content_type
+				seed_used = result.seed
+
+			st.session_state.last_request_ts = time.time()
+
 			image = Image.open(io.BytesIO(result_bytes))
 			placeholder.image(image, use_container_width=True)
 			st.download_button("Download", data=result_bytes, file_name="sd35.png", mime=content_type)
@@ -199,5 +199,7 @@ if generate:
 				"bytes": result_bytes,
 				"seed": seed_used,
 			})
-		except Exception:
-			st.error("Failed to decode image bytes.")
+		except RuntimeError as e:
+			st.error(f"Stability API error: {e}")
+		except Exception as e:
+			st.error(f"Unexpected error: {e}")

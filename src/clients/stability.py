@@ -70,7 +70,7 @@ class StabilityClient:
 			form["cfg_scale"] = (None, str(cfg_scale))
 		if negative_prompt:
 			form["negative_prompt"] = (None, negative_prompt)
-		# Some APIs allow passing the specific model via a header or param; include as form
+		# Include model alias string
 		form["model"] = (None, engine)
 
 		resp = self.client.post(TEXT_TO_IMAGE_URL, headers=self._headers(), files=form)
@@ -110,9 +110,21 @@ class StabilityClient:
 		resp = self.client.post(IMAGE_TO_IMAGE_URL, headers=self._headers(), files=form)
 		return self._process_image_response(resp)
 
+	def _compose_error_message(self, resp: httpx.Response) -> str:
+		try:
+			data = resp.json()
+			# Common Stability error formats often include fields like 'message' or 'error'
+			msg = data.get("message") or data.get("error") or data
+			return f"{resp.status_code} {msg}"
+		except Exception:
+			text = resp.text
+			if len(text) > 500:
+				text = text[:500] + "…"
+			return f"{resp.status_code} {text}"
+
 	def _process_image_response(self, resp: httpx.Response) -> GenerationResult:
 		if resp.status_code >= 400:
-			raise RuntimeError(f"Stability API error: {resp.status_code} {resp.text}")
+			raise RuntimeError(f"Stability API error: {self._compose_error_message(resp)}")
 		content_type = resp.headers.get("Content-Type", "image/png")
 		seed_header = resp.headers.get("X-Seed") or resp.headers.get("Seed")
 		seed_value: Optional[int] = int(seed_header) if seed_header and seed_header.isdigit() else None
