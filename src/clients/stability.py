@@ -5,7 +5,10 @@ from typing import Dict, Optional, Tuple
 import httpx
 from src.config import CLIENT_ID, SESSION_ID, STABILITY_API_KEY
 
-# Supported models mapping
+# Provider sample-compatible endpoints
+TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
+IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
+
 SUPPORTED_MODELS = {
     "large": "sd3.5-large",
     "turbo": "sd3.5-large-turbo",
@@ -47,26 +50,30 @@ class StabilityClient:
         style_preset: Optional[str] = None,
         cfg_scale: Optional[float] = None,
         negative_prompt: Optional[str] = None,
-        output_format: str = "png",
+        output_format: str = "jpeg",
     ) -> GenerationResult:
-        engine = SUPPORTED_MODELS.get(model, model)
-        url = f"https://api.stability.ai/v2beta/stable-image/generate/{engine}"
-
-        data = {
+        """
+        Text-to-Image request using Stability API.
+        Uses multipart/form-data with dummy "none" field (required by API sample).
+        """
+        data: Dict[str, str] = {
             "prompt": prompt,
             "output_format": output_format,
             "aspect_ratio": aspect_ratio,
         }
         if seed is not None:
-            data["seed"] = seed
+            data["seed"] = str(seed)
         if style_preset:
             data["style_preset"] = style_preset
         if cfg_scale is not None:
-            data["cfg_scale"] = cfg_scale
+            data["cfg_scale"] = str(cfg_scale)
         if negative_prompt:
             data["negative_prompt"] = negative_prompt
 
-        resp = self.client.post(url, headers=self._headers(), files={"none": ""}, data=data)
+        # multipart with dummy file
+        files = {"none": ""}
+
+        resp = self.client.post(TEXT_TO_IMAGE_URL, headers=self._headers(), data=data, files=files)
         return self._process_image_response(resp)
 
     def generate_image_to_image(
@@ -82,10 +89,11 @@ class StabilityClient:
         negative_prompt: Optional[str] = None,
         output_format: str = "jpeg",
     ) -> GenerationResult:
-        engine = SUPPORTED_MODELS.get(model, model)
-        url = f"https://api.stability.ai/v2beta/stable-image/generate/{engine}"
-
-        data = {
+        """
+        Image-to-Image request using Stability API.
+        Sends real image plus dummy "none" part as multipart/form-data.
+        """
+        data: Dict[str, str] = {
             "prompt": prompt,
             "output_format": output_format,
             "strength": str(strength),
@@ -100,20 +108,22 @@ class StabilityClient:
         if negative_prompt:
             data["negative_prompt"] = negative_prompt
 
-        files = {
+        files: Dict[str, Tuple[str, io.BytesIO, str] | str] = {
             "image": ("image.png", io.BytesIO(init_image_bytes), "image/png"),
             "none": "",
         }
 
-        resp = self.client.post(url, headers=self._headers(), data=data, files=files)
+        resp = self.client.post(IMAGE_TO_IMAGE_URL, headers=self._headers(), data=data, files=files)
         return self._process_image_response(resp)
 
     def _process_image_response(self, resp: httpx.Response) -> GenerationResult:
         if resp.status_code >= 400:
             raise RuntimeError(f"Stability API error: {self._compose_error_message(resp)}")
-        content_type = resp.headers.get("Content-Type", "image/png")
+
+        content_type = resp.headers.get("Content-Type", "image/jpeg")
         seed_header = resp.headers.get("X-Seed") or resp.headers.get("Seed")
-        seed_value = int(seed_header) if seed_header and seed_header.isdigit() else None
+        seed_value: Optional[int] = int(seed_header) if seed_header and seed_header.isdigit() else None
+
         return GenerationResult(
             image_bytes=resp.content,
             content_type=content_type,
