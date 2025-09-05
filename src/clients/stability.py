@@ -9,10 +9,6 @@ import httpx
 from src.config import CLIENT_ID, SESSION_ID, STABILITY_API_KEY
 
 
-<<<<<<< HEAD
-TEXT_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
-IMAGE_TO_IMAGE_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
-=======
 # Primary endpoints per provider sample
 TEXT_TO_IMAGE_SD3_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
 IMAGE_TO_IMAGE_SD3_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
@@ -21,7 +17,14 @@ IMAGE_TO_IMAGE_SD3_URL = "https://api.stability.ai/v2beta/stable-image/edit/sd3"
 TEXT_TO_IMAGE_BASE_URL = "https://api.stability.ai/v2beta/text-to-image"
 TEXT_TO_IMAGE_GENERATE_URL = "https://api.stability.ai/v2beta/stable-image/generate"
 IMAGE_TO_IMAGE_BASE_URL = "https://api.stability.ai/v2beta/stable-image/edit"
->>>>>>> 5e2ae1df435ab1c7edc3d3817d515e84c012e8c4
+
+
+SUPPORTED_MODELS = {
+	"large": "sd3.5-large",
+	"turbo": "sd3.5-large-turbo",
+	"medium": "sd3.5-medium",
+	"flash": "sd3.5-flash",
+}
 
 
 @dataclass
@@ -39,95 +42,18 @@ class StabilityClient:
 			raise RuntimeError("Missing STABILITY_API_KEY for Stability API client")
 		self.client = httpx.Client(timeout=timeout_seconds)
 
-<<<<<<< HEAD
-	def _headers(self) -> Dict[str, str]:
-=======
 	def _headers(self, content_type_json: bool = False) -> Dict[str, str]:
->>>>>>> 5e2ae1df435ab1c7edc3d3817d515e84c012e8c4
 		headers = {
 			"Authorization": f"Bearer {self.api_key}",
 			"Accept": "image/*",
 		}
-<<<<<<< HEAD
 		if CLIENT_ID:
 			headers["X-Client-Id"] = CLIENT_ID
 		if SESSION_ID:
 			headers["X-Session-Id"] = SESSION_ID
-		return headers
-
-	def generate_text_to_image(
-		self,
-		prompt: str,
-		model: str = "sd3",
-		aspect_ratio: str = "1:1",
-		seed: Optional[int] = None,
-		style_preset: Optional[str] = None,
-		cfg_scale: Optional[float] = None,
-		negative_prompt: Optional[str] = None,
-		output_format: str = "jpeg",
-	) -> GenerationResult:
-		# Match provider sample closely: multipart with dummy file field and minimal required fields
-		data: Dict[str, str] = {
-			"prompt": prompt,
-			"output_format": output_format,
-		}
-		# Optional extras (commonly accepted by API)
-		if aspect_ratio:
-			data["aspect_ratio"] = aspect_ratio
-		if seed is not None:
-			data["seed"] = str(seed)
-		if style_preset:
-			data["style_preset"] = style_preset
-		if cfg_scale is not None:
-			data["cfg_scale"] = str(cfg_scale)
-		if negative_prompt:
-			data["negative_prompt"] = negative_prompt
-
-		# For httpx, to emulate requests' files={"none": ''}, pass a (None, "") tuple
-		files = {"none": (None, "")}
-		resp = self.client.post(TEXT_TO_IMAGE_URL, headers=self._headers(), data=data, files=files)
-		return self._process_image_response(resp)
-
-	def generate_image_to_image(
-		self,
-		init_image_bytes: bytes,
-		prompt: str,
-		model: str = "sd3",
-		strength: float = 0.6,
-		aspect_ratio: str = "1:1",
-		seed: Optional[int] = None,
-		style_preset: Optional[str] = None,
-		cfg_scale: Optional[float] = None,
-		negative_prompt: Optional[str] = None,
-		output_format: str = "jpeg",
-	) -> GenerationResult:
-		data: Dict[str, str] = {
-			"prompt": prompt,
-			"output_format": output_format,
-			"strength": str(strength),
-		}
-		if aspect_ratio:
-			data["aspect_ratio"] = aspect_ratio
-		if seed is not None:
-			data["seed"] = str(seed)
-		if style_preset:
-			data["style_preset"] = style_preset
-		if cfg_scale is not None:
-			data["cfg_scale"] = str(cfg_scale)
-		if negative_prompt:
-			data["negative_prompt"] = negative_prompt
-
-		files: Dict[str, Tuple[str, io.BytesIO, str] | Tuple[None, str]] = {
-			"image": ("image.png", io.BytesIO(init_image_bytes), "image/png"),
-			"none": (None, ""),
-		}
-		resp = self.client.post(IMAGE_TO_IMAGE_URL, headers=self._headers(), data=data, files=files)
-		return self._process_image_response(resp)
-=======
 		if content_type_json:
 			headers["Content-Type"] = "application/json"
 		return headers
->>>>>>> 5e2ae1df435ab1c7edc3d3817d515e84c012e8c4
 
 	def _compose_error_message(self, resp: httpx.Response) -> str:
 		try:
